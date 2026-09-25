@@ -56,6 +56,7 @@ export async function transcribeMeetingChunk(
       file: createReadStream(filePath),
       model: diarizeModel,
       response_format: 'diarized_json',
+      chunking_strategy: 'auto',
       language,
     } as any)
 
