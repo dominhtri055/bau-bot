@@ -16,7 +16,7 @@ export async function transcribeAudio(bytes: Uint8Array, extension = 'webm') {
   try {
     const transcript = await client().audio.transcriptions.create({
       file: createReadStream(tempFile),
-      model: process.env.BAU_TRANSCRIBE_MODEL || 'gpt-transcribe',
+      model: process.env.BAU_TRANSCRIBE_MODEL || 'gpt-4o-transcribe',
       language: 'vi',
     })
     return transcript.text.trim()
