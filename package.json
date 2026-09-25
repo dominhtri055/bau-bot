@@ -1,6 +1,6 @@
 {
   "name": "bau-bot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Bâu Bot - Vietnamese-first Windows voice AI assistant",
   "main": "./out/main/index.js",
   "author": "Tri",
