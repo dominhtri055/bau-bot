@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import MeetingPanel from './MeetingPanel'
 
 type Mode = 'chat' | 'code' | 'meeting'
 type Message = { id: string; role: 'user' | 'assistant'; content: string; createdAt: string }
@@ -28,6 +29,7 @@ export default function App() {
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [meetingTranscript, setMeetingTranscript] = useState('')
   const [meetingSummary, setMeetingSummary] = useState('')
+  const [meetingRecording, setMeetingRecording] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -139,7 +141,10 @@ export default function App() {
     else void startRecording()
   }, [recording, startRecording, stopRecording])
 
-  useEffect(() => window.bau.onVoiceToggle(toggleRecording), [toggleRecording])
+  useEffect(() => {
+    if (mode === 'meeting') return
+    return window.bau.onVoiceToggle(toggleRecording)
+  }, [mode, toggleRecording])
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -250,8 +255,8 @@ export default function App() {
         </div>
 
         <nav className="nav">
-          <button className={mode === 'chat' ? 'active' : ''} onClick={() => setMode('chat')}>◉ Trợ lý</button>
-          <button className={mode === 'code' ? 'active' : ''} onClick={() => setMode('code')}>⌘ Coding</button>
+          <button disabled={meetingRecording} className={mode === 'chat' ? 'active' : ''} onClick={() => setMode('chat')}>◉ Trợ lý</button>
+          <button disabled={meetingRecording} className={mode === 'code' ? 'active' : ''} onClick={() => setMode('code')}>⌘ Coding</button>
           <button className={mode === 'meeting' ? 'active' : ''} onClick={() => setMode('meeting')}>▣ Meeting</button>
         </nav>
 
@@ -292,23 +297,14 @@ export default function App() {
             <span className="eyebrow">BÂU BOT / {modeTitle.toUpperCase()}</span>
             <h1>{mode === 'meeting' ? 'Meeting Assistant' : mode === 'code' ? 'Coding Agent' : 'Hỏi Bâu Bot'}</h1>
           </div>
-          <div className={`status ${recording ? 'recording' : ''}`}><i /> {status}</div>
+          <div className={`status ${recording || meetingRecording ? 'recording' : ''}`}><i /> {status}</div>
         </header>
 
         {mode === 'meeting' ? (
-          <section className="meeting-layout">
-            <div className="meeting-card">
-              <div className="card-heading">
-                <div><span className="eyebrow">TRANSCRIPT</span><h2>Transcript cuộc họp</h2></div>
-                <button className="primary" disabled={busy || !meetingTranscript.trim()} onClick={() => void summarize()}>Tóm tắt</button>
-              </div>
-              <textarea className="transcript" value={meetingTranscript} onChange={(e) => setMeetingTranscript(e.target.value)} placeholder="Dán transcript hoặc dùng Ctrl+Space để thêm lời nói vào đây…" />
-            </div>
-            <div className="meeting-card summary-card">
-              <span className="eyebrow">SUMMARY</span>
-              <div className="summary-output">{meetingSummary || 'Bâu Bot sẽ tạo: Tóm tắt • Quyết định • Việc cần làm • Deadline • Câu hỏi còn mở'}</div>
-            </div>
-          </section>
+          <MeetingPanel
+            onStatusChange={setStatus}
+            onRecordingChange={setMeetingRecording}
+          />
         ) : mode === 'code' ? (
           <section className="coding-layout">
             <div className="coding-chat">{messageList}{composer}</div>
