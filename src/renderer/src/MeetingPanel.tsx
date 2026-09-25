@@ -80,6 +80,7 @@ export default function MeetingPanel({ onStatusChange, onRecordingChange }: Prop
   const chunkTimerRef = useRef<number | null>(null)
   const streamsRef = useRef<MediaStream[]>([])
   const audioContextRef = useRef<AudioContext | null>(null)
+  const persistRef = useRef<Promise<void>>(Promise.resolve())
   const queueRef = useRef<Promise<void>>(Promise.resolve())
 
   const refreshHistory = useCallback(async (query = '') => {
@@ -107,14 +108,13 @@ export default function MeetingPanel({ onStatusChange, onRecordingChange }: Prop
     return () => window.clearInterval(timer)
   }, [recording, startedAtMs])
 
-  const enqueueChunk = useCallback((
-    blob: Blob,
+  const queueTranscription = useCallback((
     chunkIndex: number,
     offsetMs: number,
-    mimeType: string,
+    extension: string,
   ) => {
     const currentMeetingId = meetingIdRef.current
-    if (!currentMeetingId || blob.size < 512) return
+    if (!currentMeetingId) return
 
     queueRef.current = queueRef.current
       .catch(() => undefined)
@@ -122,10 +122,9 @@ export default function MeetingPanel({ onStatusChange, onRecordingChange }: Prop
         setProcessing(true)
         onStatusChange(`Đang transcribe chunk ${chunkIndex + 1}…`)
         try {
-          const result = await window.bau.transcribeMeetingChunk({
+          const result = await window.bau.transcribeSavedMeetingChunk({
             id: currentMeetingId,
-            bytes: await blob.arrayBuffer(),
-            extension: extensionForMime(mimeType),
+            extension,
             chunkIndex,
             offsetMs,
           })
@@ -138,8 +137,8 @@ export default function MeetingPanel({ onStatusChange, onRecordingChange }: Prop
           )
         } catch (chunkError) {
           const message = chunkError instanceof Error ? chunkError.message : String(chunkError)
-          setError(`Chunk ${chunkIndex + 1}: ${message}. Audio vẫn được lưu local trước khi transcribe.`)
-          onStatusChange('Có chunk chưa transcribe được')
+          setError(`Chunk ${chunkIndex + 1}: ${message}. Audio đã được lưu local và có thể retry sau.`)
+          onStatusChange('Có chunk đã lưu nhưng chưa transcribe được')
         } finally {
           setProcessing(false)
         }
@@ -166,8 +165,30 @@ export default function MeetingPanel({ onStatusChange, onRecordingChange }: Prop
         chunkTimerRef.current = null
       }
 
-      const blob = new Blob(parts, { type: recorder.mimeType || mimeType || 'audio/webm' })
-      enqueueChunk(blob, chunkIndex, offsetMs, recorder.mimeType || mimeType)
+      const finalMimeType = recorder.mimeType || mimeType || 'audio/webm'
+      const extension = extensionForMime(finalMimeType)
+      const blob = new Blob(parts, { type: finalMimeType })
+      const currentMeetingId = meetingIdRef.current
+
+      if (currentMeetingId && blob.size >= 512) {
+        persistRef.current = persistRef.current
+          .catch(() => undefined)
+          .then(async () => {
+            onStatusChange(`Đang lưu chunk ${chunkIndex + 1}…`)
+            await window.bau.saveMeetingChunk({
+              id: currentMeetingId,
+              bytes: await blob.arrayBuffer(),
+              extension,
+              chunkIndex,
+            })
+            queueTranscription(chunkIndex, offsetMs, extension)
+          })
+          .catch((saveError) => {
+            const message = saveError instanceof Error ? saveError.message : String(saveError)
+            setError(`Không lưu được chunk ${chunkIndex + 1}: ${message}`)
+            onStatusChange('Lỗi lưu audio chunk')
+          })
+      }
 
       if (activeRef.current) recordNextChunk(stream)
     }
@@ -176,7 +197,7 @@ export default function MeetingPanel({ onStatusChange, onRecordingChange }: Prop
     chunkTimerRef.current = window.setTimeout(() => {
       if (recorder.state === 'recording') recorder.stop()
     }, CHUNK_MS)
-  }, [enqueueChunk])
+  }, [onStatusChange, queueTranscription])
 
   const cleanupCapture = useCallback(async () => {
     streamsRef.current.forEach((stream) => {
@@ -254,6 +275,7 @@ export default function MeetingPanel({ onStatusChange, onRecordingChange }: Prop
       startedAtRef.current = now
       chunkIndexRef.current = 0
       activeRef.current = true
+      persistRef.current = Promise.resolve()
       queueRef.current = Promise.resolve()
       streamsRef.current = [micStream, ...(displayStream ? [displayStream] : [])]
       audioContextRef.current = audioContext
@@ -319,6 +341,7 @@ export default function MeetingPanel({ onStatusChange, onRecordingChange }: Prop
     setProcessing(true)
     onStatusChange('Đang hoàn tất transcript…')
     try {
+      await persistRef.current
       await queueRef.current
       const id = meetingIdRef.current
       if (!id) throw new Error('Không tìm thấy meeting id.')
