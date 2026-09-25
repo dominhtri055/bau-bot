@@ -1,10 +1,24 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  session,
+} from 'electron'
 import path from 'node:path'
 import dotenv from 'dotenv'
 import { askAssistant, type AssistantMode, type ChatMessage } from './ai/assistant'
 import { synthesizeSpeech, transcribeAudio } from './ai/voice'
-import { summarizeMeeting } from './ai/meeting'
+import { finishMeeting, summarizeMeeting, transcribeMeetingChunk } from './ai/meeting'
 import { loadHistory, saveHistory, type HistoryMessage } from './storage/history'
+import {
+  listStoredMeetings,
+  loadStoredMeeting,
+  saveMeetingAudioChunk,
+  startStoredMeeting,
+} from './storage/meetings'
 import { getWorkspaceRoot, scanWorkspace, setWorkspaceRoot } from './tools/workspace'
 import { runProjectCheck, type ProjectCheck } from './tools/coding'
 import { applyEditProposal, discardEditProposal, listEditProposals } from './tools/proposals'
@@ -16,10 +30,10 @@ let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1180,
-    height: 780,
-    minWidth: 900,
-    minHeight: 650,
+    width: 1240,
+    height: 820,
+    minWidth: 940,
+    minHeight: 680,
     title: 'Bâu Bot',
     backgroundColor: '#090b10',
     webPreferences: {
@@ -37,11 +51,43 @@ function createWindow() {
   }
 }
 
+function configureMediaCapture() {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (!mainWindow || webContents !== mainWindow.webContents) return callback(false)
+    callback(permission === 'media')
+  })
+
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    if (
+      process.platform !== 'win32' ||
+      !mainWindow ||
+      !request.frame ||
+      request.frame.top !== mainWindow.webContents.mainFrame
+    ) {
+      callback({})
+      return
+    }
+
+    desktopCapturer
+      .getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
+      .then((sources) => {
+        const source = sources[0]
+        if (!source) return callback({})
+        callback({
+          video: source,
+          audio: request.audioRequested ? 'loopback' : undefined,
+        })
+      })
+      .catch(() => callback({}))
+  })
+}
+
 function registerIpc() {
   ipcMain.handle('config:get', async () => ({
     hasApiKey: Boolean(process.env.OPENAI_API_KEY),
     model: process.env.BAU_MODEL || 'gpt-5.6-sol',
     workspaceRoot: getWorkspaceRoot(),
+    meetingTranscribeModel: process.env.BAU_MEETING_TRANSCRIBE_MODEL || 'gpt-4o-transcribe-diarize',
   }))
 
   ipcMain.handle('workspace:choose', async () => {
@@ -76,12 +122,50 @@ function registerIpc() {
   )
 
   ipcMain.handle('audio:speak', async (_event, text: string) => synthesizeSpeech(text))
+
   ipcMain.handle('meeting:summarize', async (_event, transcript: string) => summarizeMeeting(transcript))
+  ipcMain.handle(
+    'meeting:start',
+    async (
+      _event,
+      payload: { title?: string; capture?: { microphone: boolean; systemAudio: boolean } },
+    ) => startStoredMeeting(payload.title, payload.capture),
+  )
+  ipcMain.handle(
+    'meeting:transcribe-chunk',
+    async (
+      _event,
+      payload: {
+        id: string
+        bytes: ArrayBuffer
+        extension?: string
+        chunkIndex: number
+        offsetMs: number
+      },
+    ) => {
+      const filePath = await saveMeetingAudioChunk(
+        payload.id,
+        new Uint8Array(payload.bytes),
+        payload.chunkIndex,
+        payload.extension || 'webm',
+      )
+      return transcribeMeetingChunk(
+        payload.id,
+        filePath,
+        payload.chunkIndex,
+        Math.max(0, payload.offsetMs) / 1000,
+      )
+    },
+  )
+  ipcMain.handle('meeting:finish', (_event, id: string) => finishMeeting(id))
+  ipcMain.handle('meeting:list', (_event, query?: string) => listStoredMeetings(query || ''))
+  ipcMain.handle('meeting:get', (_event, id: string) => loadStoredMeeting(id))
 }
 
 app.whenReady().then(() => {
   registerIpc()
   createWindow()
+  configureMediaCapture()
 
   globalShortcut.register('CommandOrControl+Space', () => {
     mainWindow?.webContents.send('voice:toggle')
@@ -90,7 +174,10 @@ app.whenReady().then(() => {
   })
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+      configureMediaCapture()
+    }
   })
 })
 
