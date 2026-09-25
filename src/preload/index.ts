@@ -17,13 +17,18 @@ contextBridge.exposeInMainWorld('bau', {
   summarizeMeeting: (transcript: string) => ipcRenderer.invoke('meeting:summarize', transcript),
   startMeeting: (payload: { title?: string; capture: { microphone: boolean; systemAudio: boolean } }) =>
     ipcRenderer.invoke('meeting:start', payload),
-  transcribeMeetingChunk: (payload: {
+  saveMeetingChunk: (payload: {
     id: string
     bytes: ArrayBuffer
     extension?: string
     chunkIndex: number
+  }) => ipcRenderer.invoke('meeting:save-chunk', payload),
+  transcribeSavedMeetingChunk: (payload: {
+    id: string
+    extension?: string
+    chunkIndex: number
     offsetMs: number
-  }) => ipcRenderer.invoke('meeting:transcribe-chunk', payload),
+  }) => ipcRenderer.invoke('meeting:transcribe-saved-chunk', payload),
   finishMeeting: (id: string) => ipcRenderer.invoke('meeting:finish', id),
   listMeetings: (query = '') => ipcRenderer.invoke('meeting:list', query),
   getMeeting: (id: string) => ipcRenderer.invoke('meeting:get', id),
