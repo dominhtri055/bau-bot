@@ -16,6 +16,7 @@ import { loadHistory, saveHistory, type HistoryMessage } from './storage/history
 import {
   listStoredMeetings,
   loadStoredMeeting,
+  meetingAudioChunkPath,
   saveMeetingAudioChunk,
   startStoredMeeting,
 } from './storage/meetings'
@@ -132,7 +133,7 @@ function registerIpc() {
     ) => startStoredMeeting(payload.title, payload.capture),
   )
   ipcMain.handle(
-    'meeting:transcribe-chunk',
+    'meeting:save-chunk',
     async (
       _event,
       payload: {
@@ -140,22 +141,33 @@ function registerIpc() {
         bytes: ArrayBuffer
         extension?: string
         chunkIndex: number
-        offsetMs: number
       },
     ) => {
-      const filePath = await saveMeetingAudioChunk(
+      await saveMeetingAudioChunk(
         payload.id,
         new Uint8Array(payload.bytes),
         payload.chunkIndex,
         payload.extension || 'webm',
       )
-      return transcribeMeetingChunk(
-        payload.id,
-        filePath,
-        payload.chunkIndex,
-        Math.max(0, payload.offsetMs) / 1000,
-      )
+      return { ok: true }
     },
+  )
+  ipcMain.handle(
+    'meeting:transcribe-saved-chunk',
+    async (
+      _event,
+      payload: {
+        id: string
+        extension?: string
+        chunkIndex: number
+        offsetMs: number
+      },
+    ) => transcribeMeetingChunk(
+      payload.id,
+      meetingAudioChunkPath(payload.id, payload.chunkIndex, payload.extension || 'webm'),
+      payload.chunkIndex,
+      Math.max(0, payload.offsetMs) / 1000,
+    ),
   )
   ipcMain.handle('meeting:finish', (_event, id: string) => finishMeeting(id))
   ipcMain.handle('meeting:list', (_event, query?: string) => listStoredMeetings(query || ''))
