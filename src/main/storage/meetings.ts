@@ -94,19 +94,27 @@ export async function loadStoredMeeting(id: string): Promise<StoredMeeting> {
   return JSON.parse(raw) as StoredMeeting
 }
 
+export function meetingAudioChunkPath(
+  id: string,
+  chunkIndex: number,
+  extension = 'webm',
+) {
+  if (!Number.isInteger(chunkIndex) || chunkIndex < 0) throw new Error('chunkIndex không hợp lệ.')
+  return path.join(
+    meetingDir(id),
+    'audio',
+    `chunk-${String(chunkIndex).padStart(4, '0')}.${safeExtension(extension)}`,
+  )
+}
+
 export async function saveMeetingAudioChunk(
   id: string,
   bytes: Uint8Array,
   chunkIndex: number,
   extension = 'webm',
 ) {
-  if (!Number.isInteger(chunkIndex) || chunkIndex < 0) throw new Error('chunkIndex không hợp lệ.')
-  const dir = path.join(meetingDir(id), 'audio')
-  await fs.mkdir(dir, { recursive: true })
-  const filePath = path.join(
-    dir,
-    `chunk-${String(chunkIndex).padStart(4, '0')}.${safeExtension(extension)}`,
-  )
+  const filePath = meetingAudioChunkPath(id, chunkIndex, extension)
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
   await fs.writeFile(filePath, bytes)
   return filePath
 }
