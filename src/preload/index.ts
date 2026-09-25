@@ -15,6 +15,18 @@ contextBridge.exposeInMainWorld('bau', {
   transcribe: (bytes: ArrayBuffer, extension = 'webm') => ipcRenderer.invoke('audio:transcribe', { bytes, extension }),
   speak: (text: string) => ipcRenderer.invoke('audio:speak', text),
   summarizeMeeting: (transcript: string) => ipcRenderer.invoke('meeting:summarize', transcript),
+  startMeeting: (payload: { title?: string; capture: { microphone: boolean; systemAudio: boolean } }) =>
+    ipcRenderer.invoke('meeting:start', payload),
+  transcribeMeetingChunk: (payload: {
+    id: string
+    bytes: ArrayBuffer
+    extension?: string
+    chunkIndex: number
+    offsetMs: number
+  }) => ipcRenderer.invoke('meeting:transcribe-chunk', payload),
+  finishMeeting: (id: string) => ipcRenderer.invoke('meeting:finish', id),
+  listMeetings: (query = '') => ipcRenderer.invoke('meeting:list', query),
+  getMeeting: (id: string) => ipcRenderer.invoke('meeting:get', id),
   onVoiceToggle: (callback: () => void) => {
     const listener = () => callback()
     ipcRenderer.on('voice:toggle', listener)
