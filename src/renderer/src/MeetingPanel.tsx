@@ -120,7 +120,7 @@ export default function MeetingPanel({ onStatusChange, onRecordingChange }: Prop
       .catch(() => undefined)
       .then(async () => {
         setProcessing(true)
-        onStatusChange(\`Đang transcribe chunk \${chunkIndex + 1}…\`)
+        onStatusChange(`Đang transcribe chunk ${chunkIndex + 1}…`)
         try {
           const result = await window.bau.transcribeMeetingChunk({
             id: currentMeetingId,
@@ -133,12 +133,12 @@ export default function MeetingPanel({ onStatusChange, onRecordingChange }: Prop
           setError('')
           onStatusChange(
             result.diarized
-              ? \`Đã nhận dạng chunk \${chunkIndex + 1} + speaker\`
-              : \`Đã nhận dạng chunk \${chunkIndex + 1} (không diarize)\`,
+              ? `Đã nhận dạng chunk ${chunkIndex + 1} + speaker`
+              : `Đã nhận dạng chunk ${chunkIndex + 1} (không diarize)`,
           )
         } catch (chunkError) {
           const message = chunkError instanceof Error ? chunkError.message : String(chunkError)
-          setError(\`Chunk \${chunkIndex + 1}: \${message}. Audio vẫn được lưu local trước khi transcribe.\`)
+          setError(`Chunk ${chunkIndex + 1}: ${message}. Audio vẫn được lưu local trước khi transcribe.`)
           onStatusChange('Có chunk chưa transcribe được')
         } finally {
           setProcessing(false)
