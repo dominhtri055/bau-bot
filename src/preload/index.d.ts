@@ -97,9 +97,14 @@ declare global {
         title?: string
         capture: { microphone: boolean; systemAudio: boolean }
       }) => Promise<StoredMeeting>
-      transcribeMeetingChunk: (payload: {
+      saveMeetingChunk: (payload: {
         id: string
         bytes: ArrayBuffer
+        extension?: string
+        chunkIndex: number
+      }) => Promise<{ ok: boolean }>
+      transcribeSavedMeetingChunk: (payload: {
+        id: string
         extension?: string
         chunkIndex: number
         offsetMs: number
